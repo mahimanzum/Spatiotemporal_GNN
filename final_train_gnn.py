@@ -11,74 +11,104 @@ import math
 from torch_geometric.nn import GCNConv, GATv2Conv
 from torch_geometric.loader import DataLoader
 torch.manual_seed(12345)
-df = pd.read_csv("df_env.csv")
 
-df = df.dropna(how='all')
-df = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
-df_list = df.values.tolist()
-num_cols = 23
+
+
+positions = open('labapp3-positions.txt', 'r').read().strip()
+positions = positions.split("\n")
+positions = [x.split(" ") for x in positions]
+#print(positions)
+positions = [[float(x) for x in data] for data in positions]
+position = {}
+for dt in positions:
+    position[int(dt[0])] = (dt[1], dt[2])
+
+from tqdm import tqdm
+data_file = "labapp3-data-new.txt"
+f = open(data_file, "r").read()
+data = f.split("\n")
+X = []
+for i in tqdm(data):
+    try:
+        X.append([float(x) for x in i.split(" ")])
+        if np.isnan(X[-1]).any():
+            X.pop()
+    except:
+        pass
+MIN_S = np.min(np.array(X), axis=0)
+MAX_S = np.max(np.array(X), axis=0)
+num_sensors = 54
+from collections import defaultdict
+data_dict = defaultdict(dict)
+for dt in tqdm(X):
+    if np.isnan(dt[1]):
+        continue
+    if int(dt[1]) < num_sensors:
+        data_dict[int(dt[0])][int(dt[1])] = dt[2:]
+
+
+
 graphs = []
-for sensor in df_list:
+for time in data_dict.keys():
 
-    updated_sensor = []
-    for idx, val in enumerate(sensor):
-        temp = [0]*num_cols
-        if math.isnan(val):
-            updated_sensor.append(temp[:])
+    sensor_data = np.zeros((num_sensors, 4))
+    for sensor_id in data_dict[time]:
+        try:
+            sensor_data[sensor_id-1] = (np.array(data_dict[time][sensor_id])-MIN_S[2:])/(MAX_S[2:]-MIN_S[2:])
+        except:
+            #print(np.array(data_dict[time][sensor_id]))
+            #print(MIN_S[2:])
             continue
-        else:
-            #print("comes", idx, val)
-            temp[idx] = val
-        #print(temp.shape)
-        #print(temp)
-        updated_sensor.append(temp[:])
-    #if len(updated_sensor)==8:
-    #    print(sensor)
-    #    print(updated_sensor)
-    #print("input shape",np.array(updated_sensor).shape)
-    adj_matrix = np.ones((num_cols, num_cols))
-    a = np.argwhere(np.isnan(sensor)).reshape(1, -1)[0]
+    
+    adj_matrix = np.ones((num_sensors, num_sensors))
+
+    a = [i for i in range(num_sensors) if i not in (np.array(list(data_dict[time].keys()))-1).tolist() ]
 
     for idx in a:
-        for i in range(num_cols):
+        for i in range(num_sensors):
             adj_matrix[idx][i] = 0
             adj_matrix[i][idx] = 0
-    
+
     np.fill_diagonal(adj_matrix, 0)
-    #if len(a):
-    #    print(a)
-    #    print(adj_matrix)
     temp = np.transpose(np.nonzero(adj_matrix)).reshape(1, -1)
     edge_list = np.array([np.array(temp[0][::2]) , np.array(temp[0][1::2])])
-    g = Data(x=torch.tensor(np.array(updated_sensor), dtype=torch.float), edge_index=torch.tensor(edge_list,dtype=torch.long))
+    edge_attr = []
+    for idx in range(edge_list.shape[1]):
+        fm, to = edge_list[0][idx]+1, edge_list[1][idx]+1
+        edge_attr.append(math.sqrt((position[fm][0]-position[to][0])**2 + (position[fm][1]-position[to][1])**2))
+    edge_attr = np.array(edge_attr)
+
+    g = Data(x=torch.tensor(sensor_data, dtype=torch.float), 
+             edge_index=torch.tensor(edge_list,dtype=torch.long), 
+             y=torch.tensor(sensor_data, dtype=torch.float),
+             edge_attr=torch.tensor(edge_attr.reshape(-1, 1), dtype=torch.float))
+             
+    
     #g = Data(x=torch.rand((num_cols, num_cols), dtype=torch.float), edge_index=torch.tensor(edge_list,dtype=torch.long))
     
-    g.y = torch.tensor(np.array(sensor).reshape(-1, 1), dtype=torch.float)
-    #g.y = torch.rand((num_cols, 1), dtype=torch.float)
-    g.train_mask = np.array([True]*num_cols)
-    g.train_mask[np.argwhere(np.isnan(sensor))] = False
+    #g.y = torch.tensor(np.array(sensor).reshape(-1, 1), dtype=torch.float)
+    
+    g.train_mask = np.array([False]*num_sensors)
+    g.train_mask[np.array(list(data_dict[time].keys()))-1] = True
     g.train_mask = torch.tensor(g.train_mask)
     #print("train mask shape", g.train_mask.shape)
     #print("input shape",g.x.shape)
-    g.test_mask = np.array(([False]*num_cols))
-    g.test_mask[np.argwhere(np.isnan(sensor))] = True
+
+    g.test_mask = np.array(([True]*num_sensors))
+    g.test_mask[np.array(list(data_dict[time].keys()))-1] = False
     g.test_mask = torch.tensor(g.test_mask)
 
-    #replace g.x tensor with nan values to 0
-    #print(g.x)
-    #g.x[torch.isnan(g.x)] = 0
-    #g.y[torch.isnan(g.x)] = 0
-    #print(g.x.shape)
+    
     graphs.append(g)
 
-#graphs = graphs[:20]
+graphs = graphs[:10000]
 
-#loader = DataLoader(graphs, batch_size=10, shuffle=False)
+loader = DataLoader(graphs, batch_size=10, shuffle=False)
 
 class GCN(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv1 = GCNConv(num_cols, 16)
+        self.conv1 = GCNConv(num_sensors, 16)
         self.conv2 = GCNConv(16, 32)
         self.conv3 = GCNConv(32, 32)
         self.conv4 = GCNConv(32, 1)
@@ -97,7 +127,7 @@ class GCN(torch.nn.Module):
 
 class GAT(torch.nn.Module):
     """Graph Attention Network"""
-    def __init__(self, dim_in=num_cols,dim_h=64, dim_out=1, heads=8):
+    def __init__(self, dim_in=num_sensors,dim_h=64, dim_out=4, heads=8):
         super().__init__()
         self.gat1 = GATv2Conv(dim_in, dim_h, heads=heads)
         self.bn1 = nn.BatchNorm1d(dim_h*heads)
@@ -138,8 +168,8 @@ class GAT(torch.nn.Module):
 class GAT_V2(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.gat1 = GATv2Conv(num_cols, 120, heads=8)
-        self.gat2 = GATv2Conv(120*8, 1, heads=1)
+        self.gat1 = GATv2Conv(4, 120, heads=8)
+        self.gat2 = GATv2Conv(120*8, 4, heads=1)
         #self.conv1 = GCNConv(data.num_node_features, 120)
         #self.linear = nn.Linear(120, 5)
         #self.sigmoid = nn.Sigmoid()
@@ -200,7 +230,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 #criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCELoss()
 criterion = nn.MSELoss()
-model = train_node_classifier(model, graphs, optimizer, criterion, n_epochs=50)
+model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=5)
 
 model.eval()
 g = graphs[4]
