@@ -49,7 +49,7 @@ for dt in tqdm(X):
 
 
 graphs = []
-for time in data_dict.keys():
+for time in tqdm(data_dict.keys()):
 
     sensor_data = np.zeros((num_sensors, 4))
     for sensor_id in data_dict[time]:

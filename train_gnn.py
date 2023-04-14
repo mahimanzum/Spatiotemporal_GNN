@@ -181,13 +181,19 @@ def train_node_classifier(model, graphs, optimizer, criterion, n_epochs=100):
     return model
 
 #squeeze = lambda x: x.squeeze(1)
-def eval_node_classifier(model, graph, mask):
-
+out_final = []
+def eval_node_classifier(model, graphs):
     model.eval()
-    pred = model(graph).argmax(dim=1)
-    correct = (pred[mask] == graph.y[mask]).sum()
-    acc = int(correct) / int(mask.sum())
-    return acc
+    with torch.no_grad():
+        for idx, graph in tqdm(enumerate(graphs)):
+            out = model(graph)
+            # copy the output to a new list
+            out_list = graph.y.clone()
+            
+            out_list[graph.test_mask] = out[graph.test_mask]
+            out_list = out_list.reshape(1, -1)[0].detach().numpy().tolist()
+            out_final.append(out_list)
+
 
 #model = GCN().to('cpu')
 #model = GAT().to('cpu')
@@ -202,13 +208,8 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 criterion = nn.MSELoss()
 model = train_node_classifier(model, graphs, optimizer, criterion, n_epochs=50)
 
-model.eval()
-g = graphs[4]
-print("Input", g.x)
+eval_node_classifier(model, graphs)
 
-#print(model(g))
-print("Output", model(g))
-print("labels", g.y)
-
-#print(g.train_mask)
-#print(g.test_mask)
+# save out_final to csv with column names
+mod_df = pd.DataFrame(out_final, columns=df.columns)
+mod_df.to_csv('modified_env.csv', index=False)
