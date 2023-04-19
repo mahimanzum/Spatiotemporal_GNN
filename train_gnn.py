@@ -12,9 +12,11 @@ from torch_geometric.nn import GCNConv, GATv2Conv
 from torch_geometric.loader import DataLoader
 torch.manual_seed(12345)
 df = pd.read_csv("df_env.csv")
-
-df = df.dropna(how='all')
+print(df.shape)
+#df = df.dropna(how='all')
 df = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
+
+print(df.shape)
 df_list = df.values.tolist()
 num_cols = 23
 graphs = []
@@ -72,7 +74,7 @@ for sensor in df_list:
     graphs.append(g)
 
 #graphs = graphs[:20]
-
+print("number of graphs", len(graphs))
 #loader = DataLoader(graphs, batch_size=10, shuffle=False)
 
 class GCN(torch.nn.Module):
