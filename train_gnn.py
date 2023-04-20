@@ -10,21 +10,28 @@ from tqdm import tqdm
 import math
 from torch_geometric.nn import GCNConv, GATv2Conv
 from torch_geometric.loader import DataLoader
+import copy 
 
 torch.manual_seed(12345)
-df = pd.read_csv("df_env.csv")
-print(df.shape)
-df = df.dropna(how='all')
-df = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
 
-print(df.shape)
-df_list = df.values.tolist()
+df = pd.read_csv("df_env.csv")
+col_names = df.columns
+all_ids = df.ID.to_list()
+
+df = df.drop(columns=['ID'])
+df = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
+df = df.values.tolist()
+
+#df = df.dropna(how='all')
+
+
+
 num_cols = 24
 graphs = []
-for sensor in df_list:
 
+for sensor in df:
     updated_sensor = []
-    for idx, val in enumerate(sensor[1:]):
+    for idx, val in enumerate(sensor):
         temp = [0]*num_cols
         if math.isnan(val):
             updated_sensor.append(temp[:])
@@ -32,13 +39,7 @@ for sensor in df_list:
         else:
             #print("comes", idx, val)
             temp[idx] = val
-        #print(temp.shape)
-        #print(temp)
         updated_sensor.append(temp[:])
-    #if len(updated_sensor)==8:
-    #    print(sensor)
-    #    print(updated_sensor)
-    #print("input shape",np.array(updated_sensor).shape)
     adj_matrix = np.ones((num_cols, num_cols))
     a = np.argwhere(np.isnan(sensor)).reshape(1, -1)[0]
 
@@ -48,9 +49,6 @@ for sensor in df_list:
             adj_matrix[i][idx] = 0
     
     np.fill_diagonal(adj_matrix, 0)
-    #if len(a):
-    #    print(a)
-    #    print(adj_matrix)
     temp = np.transpose(np.nonzero(adj_matrix)).reshape(1, -1)
     edge_list = np.array([np.array(temp[0][::2]) , np.array(temp[0][1::2])])
     g = Data(x=torch.tensor(np.array(updated_sensor), dtype=torch.float), edge_index=torch.tensor(edge_list,dtype=torch.long))
@@ -66,12 +64,6 @@ for sensor in df_list:
     g.test_mask = np.array(([False]*num_cols))
     g.test_mask[np.argwhere(np.isnan(sensor))] = True
     g.test_mask = torch.tensor(g.test_mask)
-
-    #replace g.x tensor with nan values to 0
-    #print(g.x)
-    #g.x[torch.isnan(g.x)] = 0
-    #g.y[torch.isnan(g.x)] = 0
-    #print(g.x.shape)
     graphs.append(g)
 
 #graphs = graphs[:20]
@@ -165,6 +157,8 @@ def train_node_classifier(model, graphs, optimizer, criterion, n_epochs=100):
             model.train()
             optimizer.zero_grad()
             #print("before comes", graph.x.shape, graph.y.shape, graph.train_mask.shape, graph.edge_index)
+            if graph.edge_index.shape[1] == 0:
+                continue
             out = model(graph)
             #print("comes", graph.x.shape,out.shape, graph.y.shape, graph.train_mask.shape)
             loss = criterion(out[graph.train_mask] , graph.y[graph.train_mask])
@@ -184,18 +178,26 @@ def train_node_classifier(model, graphs, optimizer, criterion, n_epochs=100):
     return model
 
 #squeeze = lambda x: x.squeeze(1)
+
+adj_matrix = np.ones((num_cols, num_cols))
+np.fill_diagonal(adj_matrix, 0)
+temp = np.transpose(np.nonzero(adj_matrix)).reshape(1, -1)
+edge_list = np.array([np.array(temp[0][::2]) , np.array(temp[0][1::2])])
+
 out_final = []
 def eval_node_classifier(model, graphs):
     model.eval()
     with torch.no_grad():
         for idx, graph in tqdm(enumerate(graphs)):
+            g = copy.deepcopy(graph)
+            g.edge_index = torch.tensor(edge_list, dtype=torch.long)
+
             out = model(graph)
             # copy the output to a new list
             out_list = graph.y.clone()
-            
             out_list[graph.test_mask] = out[graph.test_mask]
             out_list = out_list.reshape(1, -1)[0].detach().numpy().tolist()
-            out_final.append(out_list)
+            out_final.append([all_ids[idx]]+out_list)
 
 
 #model = GCN().to('cpu')
@@ -204,15 +206,18 @@ model = GAT_V2().to('cpu')
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 
+
 #criterion = nn.CrossEntropyLoss()
 #criterion = nn.L1Loss()
 #criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCELoss()
 criterion = nn.MSELoss()
-model = train_node_classifier(model, graphs, optimizer, criterion, n_epochs=50)
+
+
+model = train_node_classifier(model, graphs, optimizer, criterion, n_epochs=2)
 
 eval_node_classifier(model, graphs)
 
 # save out_final to csv with column names
-mod_df = pd.DataFrame(out_final, columns=df.columns)
+mod_df = pd.DataFrame(out_final, columns=col_names)
 mod_df.to_csv('modified_env.csv', index=False)

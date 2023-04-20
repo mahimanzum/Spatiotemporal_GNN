@@ -66,7 +66,7 @@ for dt in tqdm(X):
 graphs = []
 all_times = []
 # change the line below to change the number of time stamps to be used for training
-for time in tqdm(sorted(list(data_dict.keys()))[:5000]):
+for time in tqdm(sorted(list(data_dict.keys()))[:5000]): # use first 5000 time stamps for training
     all_times.append(time)
     #print(time)
     sensor_data = np.zeros((num_sensors, 4))
@@ -248,7 +248,7 @@ edge_attr = np.array(edge_attr)
 out_final = []
 def eval_node_classifier(model, graphs):
     model.eval()
-    
+
     with torch.no_grad():
         for idx, graph in tqdm(enumerate(graphs)):
             time = all_times[idx]
@@ -265,8 +265,8 @@ def eval_node_classifier(model, graphs):
                     out_final.append([time, i+1]+out_list[i])
                 else:
                     # if this sensor is in the training set, we want to use the ground truth value
-                    #out_final.append([time, i+1]+((np.array(data_dict[time][i+1])-MIN_S[2:])/(MAX_S[2:]-MIN_S[2:])).tolist())
-                    out_final.append([time, i+1]+data_dict[time][i+1])
+                    out_final.append([time, i+1]+((np.array(data_dict[time][i+1])-MIN_S[2:])/(MAX_S[2:]-MIN_S[2:])).tolist())
+                    #out_final.append([time, i+1]+data_dict[time][i+1])
 
 # different models
 
@@ -287,21 +287,12 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 #criterion = nn.BCELoss()
 criterion = nn.MSELoss()
 
-#model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=10)
+# change number of epochs for more training
+model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=10)
 
 
 eval_node_classifier(model, graphs)
 
 # save out_final to csv with column names
 mod_df = pd.DataFrame(out_final, columns=["time", "nodeid", "temperature" ,"humidity", "light", "voltage"])
-mod_df.to_csv('modified_env.csv', index=False)
-
-'''
-30,1,0.20009765028953552,0.0059858085587620735,0.7404278516769409,-0.0762353166937828
-30,2,0.2406468242406845,0.01273853424936533,0.838738203048706,-0.046470265835523605
-30,3,0.1382274133896898,0.988967344623328,0.027390438247011956,0.8541260865461349
-30,4,0.2236645221710205,-0.018838858231902122,0.7683352828025818,-0.02886117435991764
-30,5,0.214375302195549,-0.050112172961235046,0.812414824962616,-0.05435218662023544
-30,6,0.1387359423352706,0.9889371603446336,0.06573705179282868,0.8388215635376892
-30,7,0.2642294466495514,-0.007743816822767258,0.8069591522216797,-0.06117755547165871
-'''
+mod_df.to_csv('modified_labapp3.csv', index=False)
