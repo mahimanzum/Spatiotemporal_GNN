@@ -64,9 +64,10 @@ for dt in tqdm(X):
 
 # loop for creating the graph data for each time stamp
 graphs = []
-
+all_times = []
 # change the line below to change the number of time stamps to be used for training
-for time in tqdm(sorted(list(data_dict.keys()))[:100]):
+for time in tqdm(sorted(list(data_dict.keys()))[:5000]):
+    all_times.append(time)
     #print(time)
     sensor_data = np.zeros((num_sensors, 4))
     for sensor_id in data_dict[time]:
@@ -122,6 +123,7 @@ for time in tqdm(sorted(list(data_dict.keys()))[:100]):
 print(len(graphs))
 #graphs = graphs[:10000]
 
+# creaitng the dataloader for the graphs so that they can be used for batching and efficient training
 loader = DataLoader(graphs, batch_size=10, shuffle=False)
 
 # three models are used for comparison
@@ -246,8 +248,10 @@ edge_attr = np.array(edge_attr)
 out_final = []
 def eval_node_classifier(model, graphs):
     model.eval()
+    
     with torch.no_grad():
         for idx, graph in tqdm(enumerate(graphs)):
+            time = all_times[idx]
             g = copy.deepcopy(graph)    
             g.edge_index = torch.tensor(edge_list,dtype=torch.long)
             g.edge_attr = torch.tensor(edge_attr.reshape(-1, 1), dtype=torch.float)
@@ -258,26 +262,33 @@ def eval_node_classifier(model, graphs):
                 # we want a prediction for each sensor
                 if not graph.train_mask[i]:
                     # if this sensor is not in the training set, we want to predict and use the imputed value
-                    out_final.append([(idx+1)*30, i+1]+out_list[i])
+                    out_final.append([time, i+1]+out_list[i])
                 else:
                     # if this sensor is in the training set, we want to use the ground truth value
-                    out_final.append([(idx+1)*30, i+1]+((np.array(data_dict[(idx+1)*30][i+1])-MIN_S[2:])/(MAX_S[2:]-MIN_S[2:])).tolist())
+                    #out_final.append([time, i+1]+((np.array(data_dict[time][i+1])-MIN_S[2:])/(MAX_S[2:]-MIN_S[2:])).tolist())
+                    out_final.append([time, i+1]+data_dict[time][i+1])
 
+# different models
 
 #model = GCN().to('cpu')
 #model = GAT().to('cpu')
 model = GAT_V2().to('cpu')
+
+#different optimizers
+
 #optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
+
+#different loss functions
 
 #criterion = nn.CrossEntropyLoss()
 #criterion = nn.L1Loss()
 #criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCELoss()
 criterion = nn.MSELoss()
-#model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=1)
 
-model.eval()
+#model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=10)
+
 
 eval_node_classifier(model, graphs)
 
