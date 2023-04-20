@@ -10,6 +10,7 @@ from tqdm import tqdm
 import math
 from torch_geometric.nn import GCNConv, GATv2Conv
 from torch_geometric.loader import DataLoader
+import copy
 torch.manual_seed(12345)
 
 
@@ -49,8 +50,8 @@ for dt in tqdm(X):
 
 
 graphs = []
-for time in tqdm(data_dict.keys()):
-
+for time in tqdm(sorted(list(data_dict.keys()))[:100]):
+    #print(time)
     sensor_data = np.zeros((num_sensors, 4))
     for sensor_id in data_dict[time]:
         try:
@@ -101,7 +102,8 @@ for time in tqdm(data_dict.keys()):
     
     graphs.append(g)
 
-graphs = graphs[:10000]
+print(len(graphs))
+#graphs = graphs[:10000]
 
 loader = DataLoader(graphs, batch_size=10, shuffle=False)
 
@@ -211,13 +213,36 @@ def train_node_classifier(model, graphs, optimizer, criterion, n_epochs=100):
     return model
 
 #squeeze = lambda x: x.squeeze(1)
-def eval_node_classifier(model, graph, mask):
 
+adj_matrix = np.ones((num_sensors, num_sensors))
+np.fill_diagonal(adj_matrix, 0)
+temp = np.transpose(np.nonzero(adj_matrix)).reshape(1, -1)
+edge_list = np.array([np.array(temp[0][::2]) , np.array(temp[0][1::2])])
+
+edge_attr = []
+for idx in range(edge_list.shape[1]):
+    fm, to = edge_list[0][idx]+1, edge_list[1][idx]+1
+    edge_attr.append(math.sqrt((position[fm][0]-position[to][0])**2 + (position[fm][1]-position[to][1])**2))
+edge_attr = np.array(edge_attr)
+
+out_final = []
+def eval_node_classifier(model, graphs):
     model.eval()
-    pred = model(graph).argmax(dim=1)
-    correct = (pred[mask] == graph.y[mask]).sum()
-    acc = int(correct) / int(mask.sum())
-    return acc
+    with torch.no_grad():
+        for idx, graph in tqdm(enumerate(graphs)):
+            for i in range(num_sensors):
+                print(idx, graph.train_mask)
+                if not graph.train_mask[i]:
+                    g = copy.deepcopy(graph)    
+                    g.edge_index = torch.tensor(edge_list,dtype=torch.long)
+                    g.edge_attr = torch.tensor(edge_attr.reshape(-1, 1), dtype=torch.float)
+                    out = model(g)
+                    out_list = out.detach().numpy().tolist()
+                    out_final.append([(i+1)*30, i+1]+out_list[i])
+                else:
+                    print(data_dict[(i+1)*30])
+                    out_final.append([(i+1)*30, i+1]+data_dict[(i+1)*30][i+1])
+
 
 #model = GCN().to('cpu')
 #model = GAT().to('cpu')
@@ -230,15 +255,12 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 #criterion = nn.BCEWithLogitsLoss()
 #criterion = nn.BCELoss()
 criterion = nn.MSELoss()
-model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=5)
+#model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=1)
 
 model.eval()
-g = graphs[4]
-print("Input", g.x)
 
-#print(model(g))
-print("Output", model(g))
-print("labels", g.y)
+eval_node_classifier(model, graphs)
 
-#print(g.train_mask)
-#print(g.test_mask)
+# save out_final to csv with column names
+mod_df = pd.DataFrame(out_final, columns=["time", "nodeid", "temperature" ,"humidity", "light", "voltage"])
+mod_df.to_csv('modified_env.csv', index=False)

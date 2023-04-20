@@ -14,17 +14,17 @@ from torch_geometric.loader import DataLoader
 torch.manual_seed(12345)
 df = pd.read_csv("df_env.csv")
 print(df.shape)
-#df = df.dropna(how='all')
+df = df.dropna(how='all')
 df = df.apply(lambda x: (x - x.min()) / (x.max() - x.min()))
 
 print(df.shape)
 df_list = df.values.tolist()
-num_cols = 23
+num_cols = 24
 graphs = []
 for sensor in df_list:
 
     updated_sensor = []
-    for idx, val in enumerate(sensor):
+    for idx, val in enumerate(sensor[1:]):
         temp = [0]*num_cols
         if math.isnan(val):
             updated_sensor.append(temp[:])
