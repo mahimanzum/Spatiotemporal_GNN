@@ -30,11 +30,13 @@ data_file = "labapp3-data-new.txt"
 f = open(data_file, "r").read()
 data = f.split("\n")
 X = []
+cnt=0
 for i in tqdm(data):
     try:
         X.append([float(x) for x in i.split(" ")])
         if np.isnan(X[-1]).any():
             X.pop()
+            cnt+=1
     except:
         pass
 
