@@ -68,7 +68,7 @@ for dt in tqdm(X):
 graphs = []
 all_times = []
 # change the line below to change the number of time stamps to be used for training
-for time in tqdm(sorted(list(data_dict.keys()))[:5000]): # use first 5000 time stamps for training
+for time in tqdm(sorted(list(data_dict.keys()))[:20000]): # use first 5000 time stamps for training
     all_times.append(time)
     #print(time)
     sensor_data = np.zeros((num_sensors, 4))
@@ -290,7 +290,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
 criterion = nn.MSELoss()
 
 # change number of epochs for more training
-model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=10)
+model = train_node_classifier(model, loader, optimizer, criterion, n_epochs=20)
 
 
 eval_node_classifier(model, graphs)
