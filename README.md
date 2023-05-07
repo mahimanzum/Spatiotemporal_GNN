@@ -20,5 +20,5 @@ forcasting1.ipynb is used to evaluate the imputed dataset in the downstream task
 # Common Imputation methods for Dataset 1 and 2
 # for dataset 1
 https://github.com/GChenCeph/laptop_new_data.git
-#for dataset 2
+# for dataset 2
 https://github.com/GChenCeph/df_env.git
